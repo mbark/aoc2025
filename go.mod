@@ -1,0 +1,3 @@
+module github.com/mbark/aoc2025
+
+go 1.25
