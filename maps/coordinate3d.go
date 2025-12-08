@@ -2,6 +2,7 @@ package maps
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/mbark/aoc2025/maths"
@@ -50,6 +51,11 @@ func (c Coordinate3D) Adjacent() []Coordinate3D {
 func (c Coordinate3D) ManhattanDistance(to Coordinate3D) int {
 	d := c.Diff(to)
 	return d.X + d.Y + d.Z
+}
+
+func (c Coordinate3D) EuclideanDistance(to Coordinate3D) float64 {
+	d := c.Diff(to)
+	return math.Sqrt(float64(d.X*d.X + d.Y*d.Y + d.Z*d.Z))
 }
 
 func (c Coordinate3D) Sub(to Coordinate3D) Coordinate3D {
