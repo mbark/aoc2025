@@ -2,6 +2,7 @@ package day9
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/mbark/aoc2025/maps"
 	"github.com/mbark/aoc2025/maths"
@@ -55,30 +56,35 @@ func first(coords []maps.Coordinate) int {
 
 type Polygon []maps.Coordinate
 
+type size struct {
+	c1, c2 maps.Coordinate
+	size   int
+}
+
 func second(coords []maps.Coordinate) int {
 	polygon := getPolygon(coords)
 
-	var largest int
-	var l1, l2 maps.Coordinate
+	var sizes []size
 	for i, c1 := range coords {
 		for j, c2 := range coords {
 			if i <= j {
 				continue
 			}
 
-			if !checkBox(polygon, c1, c2) {
-				continue
-			}
-
-			dist := c1.ManhattanDistance(c2)
-			if dist > largest {
-				largest = dist
-				l1, l2 = c1, c2
-			}
+			sizes = append(sizes, size{c1: c1, c2: c2, size: (1 + maths.AbsInt(c1.X-c2.X)) * (1 + maths.AbsInt(c1.Y-c2.Y))})
 		}
 	}
+	slices.SortFunc(sizes, func(a, b size) int { return b.size - a.size })
 
-	return (1 + maths.AbsInt(l1.X-l2.X)) * (1 + maths.AbsInt(l1.Y-l2.Y))
+	for _, s := range sizes {
+		if !checkBox(polygon, s.c1, s.c2) {
+			continue
+		}
+
+		return s.size
+	}
+
+	return 0
 }
 
 type Box struct {
