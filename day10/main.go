@@ -1,13 +1,15 @@
 package day10
 
 import (
-	"container/heap"
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/mbark/aoc2025/fns"
-	"github.com/mbark/aoc2025/queue"
+	"github.com/mbark/aoc2025/maths"
 	"github.com/mbark/aoc2025/util"
 )
 
@@ -64,14 +66,95 @@ func first(diagrams []Diagram) int {
 	return sum
 }
 
+func noerr(err error) {
+	if err != nil {
+		fmt.Printf("%+v\n", err)
+		panic(err)
+	}
+}
+
 func second(diagrams []Diagram) int {
 	var sum int
 	for i, d := range diagrams {
-		fmt.Println("diagram", i, "/", len(diagrams), ":", d)
-		count := bfs2(d)
-		sum += count
+		fmt.Printf("%d/%d: %s\n", i, len(diagrams), d)
+		p := diagramToProblem(d)
+		sol := p.Solve()
+		sum += sol
 	}
 	return sum
+}
+
+func diagramToProblem(d Diagram) Problem {
+	p := Problem{Domains: make(map[string][]int)}
+	for _, j := range d.Joltage {
+		p.Equations = append(p.Equations, Equation{map[string]int{}, j})
+	}
+
+	for i, b := range d.Buttons {
+		name := fmt.Sprintf("B%d", i)
+		p.Variables = append(p.Variables, name)
+		var maxJ int
+		for _, j := range b {
+			p.Equations[j].Variables[name] = 1
+			maxJ = maths.MaxInt(maxJ, d.Joltage[j])
+		}
+		p.Domains[name] = []int{0, maxJ}
+	}
+
+	return p
+}
+
+type Problem struct {
+	Variables []string         `json:"variables"`
+	Domains   map[string][]int `json:"domains"`
+	Equations []Equation       `json:"equations"`
+}
+
+type Equation struct {
+	Variables map[string]int `json:"variables"`
+	Value     int            `json:"value"`
+}
+
+func (problem Problem) Solve() int {
+	marshalled, err := json.Marshal(problem)
+	noerr(err)
+
+	cmd := exec.Command("uv", "run", "day10/day10.py")
+	stdin, err := cmd.StdinPipe()
+	noerr(err)
+
+	_, err = stdin.Write(marshalled)
+	noerr(err)
+
+	err = stdin.Close()
+	noerr(err)
+
+	stdout, stderr := new(bytes.Buffer), new(bytes.Buffer)
+	cmd.Stdout, cmd.Stderr = stdout, stderr
+	err = cmd.Run()
+	if err != nil {
+		fmt.Println(stderr.String())
+		fmt.Println(stdout.String())
+	}
+	noerr(err)
+
+	var res Result
+	err = json.Unmarshal(stdout.Bytes(), &res)
+	noerr(err)
+
+	if res.Status != "success" {
+		fmt.Println(stderr.String())
+		fmt.Println(stdout.String())
+		panic("failed to find solution")
+	}
+
+	return res.Sum
+}
+
+type Result struct {
+	Status   string         `json:"status"`
+	Solution map[string]int `json:"solution"`
+	Sum      int            `json:"sum"`
 }
 
 func bfs(d Diagram) int {
@@ -98,78 +181,6 @@ func bfs(d Diagram) int {
 	}
 
 	return 0
-}
-
-func bfs2(d Diagram) int {
-	initial := make(Joltage, len(d.Joltage))
-	pq := queue.PriorityQueue[clicksJ]{}
-	heap.Init(&pq)
-	heap.Push(&pq, &queue.Item[clicksJ]{Value: clicksJ{joltage: initial, count: 0}, Priority: 0})
-	visited := map[string]bool{initial.String(): true}
-	var best int
-
-	for len(pq) > 0 {
-		q := heap.Pop(&pq).(*queue.Item[clicksJ])
-		next := q.Value
-		fmt.Println("states", len(pq), "visits", len(visited), "next", next.count, next.joltage, d.Diff(next.joltage))
-
-		for _, b := range d.Buttons {
-			pressed := b.PressJ(next.joltage)
-			if best > 0 && d.Diff(pressed) >= best {
-				continue
-			}
-			if visited[pressed.String()] {
-				continue
-			}
-			if d.IsDoneJ(pressed) {
-				best = next.count + 1
-			}
-			if d.IsImpossible(pressed) {
-				continue
-			}
-
-			visited[pressed.String()] = true
-			heap.Push(&pq, &queue.Item[clicksJ]{Value: clicksJ{joltage: pressed, count: next.count + 1}, Priority: d.Diff(pressed)})
-		}
-	}
-
-	return best
-}
-
-func bfs2(d Diagram) int {
-	initial := make(Joltage, len(d.Joltage))
-	pq := queue.PriorityQueue[clicksJ]{}
-	heap.Init(&pq)
-	heap.Push(&pq, &queue.Item[clicksJ]{Value: clicksJ{joltage: initial, count: 0}, Priority: 0})
-	visited := map[string]bool{initial.String(): true}
-	var best int
-
-	for len(pq) > 0 {
-		q := heap.Pop(&pq).(*queue.Item[clicksJ])
-		next := q.Value
-		fmt.Println("states", len(pq), "visits", len(visited), "next", next.count, next.joltage, d.Diff(next.joltage))
-
-		for _, b := range d.Buttons {
-			pressed := b.PressJ(next.joltage)
-			if best > 0 && d.Diff(pressed) >= best {
-				continue
-			}
-			if visited[pressed.String()] {
-				continue
-			}
-			if d.IsDoneJ(pressed) {
-				best = next.count + 1
-			}
-			if d.IsImpossible(pressed) {
-				continue
-			}
-
-			visited[pressed.String()] = true
-			heap.Push(&pq, &queue.Item[clicksJ]{Value: clicksJ{joltage: pressed, count: next.count + 1}, Priority: d.Diff(pressed)})
-		}
-	}
-
-	return best
 }
 
 type clicks struct {
@@ -251,6 +262,15 @@ func (l Lights) String() string {
 
 type Button []int
 
+func (b Button) Has(i int) bool {
+	for _, j := range b {
+		if j == i {
+			return true
+		}
+	}
+	return false
+}
+
 func (b Button) String() string {
 	var sb []string
 	for _, i := range b {
@@ -269,12 +289,12 @@ func (b Button) Press(original Lights) Lights {
 	return copied
 }
 
-func (b Button) PressJ(original Joltage) Joltage {
+func (b Button) PressJ(original Joltage, count int) Joltage {
 	copied := make(Joltage, len(original))
 	copy(copied, original)
 
 	for _, i := range b {
-		copied[i] += 1
+		copied[i] += count
 	}
 	return copied
 }
